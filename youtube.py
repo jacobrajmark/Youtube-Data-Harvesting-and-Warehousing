@@ -2,7 +2,7 @@ import googleapiclient.discovery
 import pandas as pd
 import psycopg2
 import sqlalchemy
-from sqlalchemy import create_engine,DateTime,Interval
+from sqlalchemy import create_engine,Date,Interval
 import streamlit as st
 
 api_service_name = "youtube"
