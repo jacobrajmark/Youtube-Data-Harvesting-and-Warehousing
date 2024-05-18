@@ -7,7 +7,7 @@ import streamlit as st
 
 api_service_name = "youtube"
 api_version = "v3"
-api_key="AIzaSyDFdVf0lubpCGZXmNPEtHcuye0ZhgCCmKo"
+api_key="AIzaSyD5rl5cYxtbCVGlGMLB_TpC3rDBKFL7scs"
 youtube = googleapiclient.discovery.build(api_service_name, api_version, developerKey=api_key)
 
 
@@ -20,160 +20,159 @@ with st.sidebar:
 channel_id=st.text_input("Enter the channel ID")
 
 if st.button("collect and store data"):
-    try:
+    
     #get channels information
-        def get_channel_data(channel_id):
+    def get_channel_data(channel_id):
 
-            request = youtube.channels().list(
-            part="snippet,contentDetails,statistics",
-            id=channel_id
+        request = youtube.channels().list(
+        part="snippet,contentDetails,statistics",
+        id=channel_id
+        )
+        response = request.execute()
+        channel_list=[]
+        for i in response["items"]:
+            Channel_Name=i["snippet"]["title"],
+            Channel_Id=i["id"],
+            Subscribers=i['statistics']['subscriberCount'],
+            Views=i["statistics"]["viewCount"],
+            Total_Videos=i["statistics"]["videoCount"],
+            Channel_Description=i["snippet"]["description"],
+            Playlist_Id=i["contentDetails"]["relatedPlaylists"]["uploads"]
+            channel_list.append([Channel_Name,Channel_Id,Subscribers,Views,Total_Videos,Channel_Description,Playlist_Id])
+        df1=pd.DataFrame(channel_list,columns=['Channel_Name','Channel_Id','Subscribers','Views','Total_Videos','Channel_Description','Playlist_Id'])
+        return df1
+
+    ch_detail=get_channel_data(channel_id)
+    
+    #get video ids
+    def get_videos_ids(channel_id):
+        video_ids=[]
+        response=youtube.channels().list(id=channel_id,
+                                        part='contentDetails').execute()
+        Playlist_Id=response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+
+        next_page_token=None
+
+        while True:
+            response1=youtube.playlistItems().list(
+                                                part='snippet',
+                                                playlistId=Playlist_Id,
+                                                maxResults=50,
+                                                pageToken=next_page_token).execute()
+            for i in range(len(response1['items'])):
+                video_ids.append(response1['items'][i]['snippet']['resourceId']['videoId'])
+            next_page_token=response1.get('nextPageToken')
+
+            if next_page_token is None:
+                break
+        return video_ids
+
+    vi_id=get_videos_ids(channel_id)
+    
+
+    #get video information
+    def get_video_info(video_ids):
+
+        video_data=[]
+        for video_id in video_ids:
+
+            request=youtube.videos().list(
+                    part="snippet,ContentDetails,statistics",
+                    id=video_id
             )
-            response = request.execute()
-            channel_list=[]
-            for i in response["items"]:
-                Channel_Name=i["snippet"]["title"],
-                Channel_Id=i["id"],
-                Subscribers=i['statistics']['subscriberCount'],
-                Views=i["statistics"]["viewCount"],
-                Total_Videos=i["statistics"]["videoCount"],
-                Channel_Description=i["snippet"]["description"],
-                Playlist_Id=i["contentDetails"]["relatedPlaylists"]["uploads"]
-                channel_list.append([Channel_Name,Channel_Id,Subscribers,Views,Total_Videos,Channel_Description,Playlist_Id])
-            df1=pd.DataFrame(channel_list,columns=['Channel_Name','Channel_Id','Subscribers','Views','Total_Videos','Channel_Description','Playlist_Id'])
-            return df1
+            response=request.execute()
 
-        ch_detail=get_channel_data(channel_id)
-        
-        #get video ids
-        def get_videos_ids(channel_id):
-            video_ids=[]
-            response=youtube.channels().list(id=channel_id,
-                                            part='contentDetails').execute()
-            Playlist_Id=response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+            for item in response["items"]:
 
-            next_page_token=None
+                Channel_Name=item['snippet']['channelTitle'],
+                Channel_Id=item['snippet']['channelId'],
+                Video_Id=item['id'],
+                Title=item['snippet']['title'],
+                Tags=item['snippet'].get('tags'),
+                Thumbnail=item['snippet']['thumbnails']['default']['url'],
+                Description=item['snippet'].get('description'),
+                Published_Date=item['snippet']['publishedAt'],
+                Duration=item['contentDetails']['duration'],
+                Views=item['statistics'].get('viewCount'),
+                Likes=item['statistics'].get('likeCount'),
+                Comments=item['statistics'].get('commentCount'),
+                Favorite_Count=item['statistics']['favoriteCount'],
+                Definition=item['contentDetails']['definition'],
+                Caption_Status=item['contentDetails']['caption']
+                video_data.append([Channel_Name,Channel_Id,Video_Id,Title,Tags,Thumbnail,
+                                    Description,Published_Date,Duration,
+                                    Views,Likes,Comments,Favorite_Count,Definition,Caption_Status])
+        df2=pd.DataFrame(video_data,columns=['Channel_Name','Channel_Id','Video_Id','Title','Tags','Thumbnail',
+                                        'Description','Published_Date','Duration',
+                                        'Views','Likes','Comments','Favorite_Count','Definition','Caption_Status'])
 
-            while True:
-                response1=youtube.playlistItems().list(
-                                                    part='snippet',
-                                                    playlistId=Playlist_Id,
-                                                    maxResults=50,
-                                                    pageToken=next_page_token).execute()
-                for i in range(len(response1['items'])):
-                    video_ids.append(response1['items'][i]['snippet']['resourceId']['videoId'])
-                next_page_token=response1.get('nextPageToken')
+        return df2
 
-                if next_page_token is None:
-                    break
-            return video_ids
+    video_information=get_video_info(vi_id)
+    
 
-        vi_id=get_videos_ids(channel_id)
-        
-
-        #get video information
-        def get_video_info(video_ids):
-
-            video_data=[]
+    #get comment information
+    def get_comment_info(video_ids):
+        Comment_data=[]
+        try:
             for video_id in video_ids:
-
-                request=youtube.videos().list(
-                        part="snippet,ContentDetails,statistics",
-                        id=video_id
+                request=youtube.commentThreads().list(
+                    part="snippet",
+                    videoId=video_id,
+                    maxResults=50
                 )
                 response=request.execute()
 
-                for item in response["items"]:
+                for item in response['items']:
 
-                    Channel_Name=item['snippet']['channelTitle'],
-                    Channel_Id=item['snippet']['channelId'],
-                    Video_Id=item['id'],
+                    Comment_Id=item['snippet']['topLevelComment']['id'],
+                    Video_Id=item['snippet']['topLevelComment']['snippet']['videoId'],
+                    Comment_Text=item['snippet']['topLevelComment']['snippet']['textDisplay'],
+                    Comment_Author=item['snippet']['topLevelComment']['snippet']['authorDisplayName'],
+                    Comment_Published=item['snippet']['topLevelComment']['snippet']['publishedAt']
+
+                    Comment_data.append([Comment_Id,Video_Id,Comment_Text,Comment_Author,Comment_Published])
+        except:
+            pass
+        df3=pd.DataFrame(Comment_data,columns=['Comment_Id','Video_Id','Comment_Text',
+                                                'Comment_Author','Comment_Published'])
+        return df3
+
+    comment=get_comment_info(vi_id)
+    
+
+    #get_playlist_details
+
+    def get_playlist_details(channel_id):
+
+        next_page_token=None
+        All_data=[]
+        while True:
+                request=youtube.playlists().list(
+                        part='snippet,contentDetails',
+                        channelId=channel_id,
+                        maxResults=50,
+                        pageToken=next_page_token
+                )
+                response=request.execute()
+
+                for item in response['items']:
+                    Playlist_Id=item['id'],
                     Title=item['snippet']['title'],
-                    Tags=item['snippet'].get('tags'),
-                    Thumbnail=item['snippet']['thumbnails']['default']['url'],
-                    Description=item['snippet'].get('description'),
-                    Published_Date=item['snippet']['publishedAt'],
-                    Duration=item['contentDetails']['duration'],
-                    Views=item['statistics'].get('viewCount'),
-                    Likes=item['statistics'].get('likeCount'),
-                    Comments=item['statistics'].get('commentCount'),
-                    Favorite_Count=item['statistics']['favoriteCount'],
-                    Definition=item['contentDetails']['definition'],
-                    Caption_Status=item['contentDetails']['caption']
-                    video_data.append([Channel_Name,Channel_Id,Video_Id,Title,Tags,Thumbnail,
-                                        Description,Published_Date,Duration,
-                                        Views,Likes,Comments,Favorite_Count,Definition,Caption_Status])
-            df2=pd.DataFrame(video_data,columns=['Channel_Name','Channel_Id','Video_Id','Title','Tags','Thumbnail',
-                                            'Description','Published_Date','Duration',
-                                            'Views','Likes','Comments','Favorite_Count','Definition','Caption_Status'])
+                    Channel_Id=item['snippet']['channelId'],
+                    Channel_Name=item['snippet']['channelTitle'],
+                    PublishedAt=item['snippet']['publishedAt'],
+                    Video_Count=item['contentDetails']['itemCount']
+                    All_data.append([Playlist_Id,Title,Channel_Id,Channel_Name,PublishedAt,Video_Count])
 
-            return df2
+                next_page_token=response.get('nextPageToken')
+                if next_page_token is None:
+                        break
+        df4=pd.DataFrame(All_data,columns=['Playlist_Id','Title','Channel_Id','Channel_Name','PublishedAt','Video_Count'])
+        return df4
 
-        video_information=get_video_info(vi_id)
-        
-
-        #get comment information
-        def get_comment_info(video_ids):
-            Comment_data=[]
-            try:
-                for video_id in video_ids:
-                    request=youtube.commentThreads().list(
-                        part="snippet",
-                        videoId=video_id,
-                        maxResults=50
-                    )
-                    response=request.execute()
-
-                    for item in response['items']:
-
-                        Comment_Id=item['snippet']['topLevelComment']['id'],
-                        Video_Id=item['snippet']['topLevelComment']['snippet']['videoId'],
-                        Comment_Text=item['snippet']['topLevelComment']['snippet']['textDisplay'],
-                        Comment_Author=item['snippet']['topLevelComment']['snippet']['authorDisplayName'],
-                        Comment_Published=item['snippet']['topLevelComment']['snippet']['publishedAt']
-
-                        Comment_data.append([Comment_Id,Video_Id,Comment_Text,Comment_Author,Comment_Published])
-            except:
-                pass
-            df3=pd.DataFrame(Comment_data,columns=['Comment_Id','Video_Id','Comment_Text',
-                                                    'Comment_Author','Comment_Published'])
-            return df3
-
-        comment=get_comment_info(vi_id)
-        
-
-        #get_playlist_details
-
-        def get_playlist_details(channel_id):
-
-            next_page_token=None
-            All_data=[]
-            while True:
-                    request=youtube.playlists().list(
-                            part='snippet,contentDetails',
-                            channelId=channel_id,
-                            maxResults=50,
-                            pageToken=next_page_token
-                    )
-                    response=request.execute()
-
-                    for item in response['items']:
-                        Playlist_Id=item['id'],
-                        Title=item['snippet']['title'],
-                        Channel_Id=item['snippet']['channelId'],
-                        Channel_Name=item['snippet']['channelTitle'],
-                        PublishedAt=item['snippet']['publishedAt'],
-                        Video_Count=item['contentDetails']['itemCount']
-                        All_data.append([Playlist_Id,Title,Channel_Id,Channel_Name,PublishedAt,Video_Count])
-
-                    next_page_token=response.get('nextPageToken')
-                    if next_page_token is None:
-                            break
-            df4=pd.DataFrame(All_data,columns=['Playlist_Id','Title','Channel_Id','Channel_Name','PublishedAt','Video_Count'])
-            return df4
-
-        playlist_details=get_playlist_details(channel_id)
-    except:
-        pass
+    playlist_details=get_playlist_details(channel_id)
+    
     st.dataframe(ch_detail)
     
 #Table creation and uploads   
@@ -231,10 +230,10 @@ if st.button("collect and store data"):
 
     st.success('**Successfully uploaded in DATABASE**')
 
-tab1,tab2 = st.tabs(["View Channels", "Queries"])
+tab1,tab2 = st.tabs(["VIEW CHANNELS", "QUREIES"])
 with tab1:
     # TO VIEW ALL THE UPLOADED CHANNELS     
-    Check_channel = st.checkbox('**Check available channel data for analysis**')
+    Check_channel = st.checkbox('**Check available channel data avalible**')
     if Check_channel:
         mydb=psycopg2.connect(host="localhost",
                         user="postgres",
@@ -366,6 +365,4 @@ with tab2:
         df_10 = pd.DataFrame(result_10, columns=['Channel Name', 'Video Name', 'Number of comments'])
         df_10.index += 1
         st.dataframe(df_10)
-
-
 
